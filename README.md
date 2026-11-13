@@ -1,3 +1,1 @@
-# nhodp
-
-A new Flutter project.
+NHODP is a full-stack microservices platform designed to provide a unified open health data infrastructure for Egypt. It includes bilingual medical OCR, automated PHI anonymization, dataset approval workflows, health analytics, role-based access control, and a searchable public data catalog. Built with FastAPI, Flutter Web, MongoDB, PostgreSQL, Docker, Nginx, and Tesseract OCR.
