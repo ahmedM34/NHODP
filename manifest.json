@@ -1,0 +1,10 @@
+{
+    "name": "NHODP",
+    "short_name": "NHODP",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#1565C0",
+    "theme_color": "#1565C0",
+    "description": "National Health Open Data Portal - Egypt",
+    "icons": []
+}
