@@ -1,0 +1,175 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nhodp_postgres
+    environment:
+      POSTGRES_USER: nhodp
+      POSTGRES_PASSWORD: nhodp2026
+      POSTGRES_DB: nhodp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db_init/postgres_init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - nhodp_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nhodp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6.0
+    container_name: nhodp_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin2026
+      MONGO_INITDB_DATABASE: nhodp_datasets
+    volumes:
+      - mongodb_data:/data/db
+      - ./db_init/mongo_init.js:/docker-entrypoint-initdb.d/01_init.js
+    ports:
+      - "27017:27017"
+    networks:
+      - nhodp_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: mongod --auth
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: nhodp_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nhodp_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  auth_service:
+    build:
+      context: ./services/auth_service
+      dockerfile: Dockerfile
+    container_name: nhodp_auth_service
+    environment:
+      DATABASE_URL: postgresql://nhodp:nhodp2026@postgres:5432/nhodp
+      SECRET_KEY: nhodp-change-this-secret-in-production-2026
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+  dataset_service:
+    build:
+      context: ./services/dataset_service
+      dockerfile: Dockerfile
+    container_name: nhodp_dataset_service
+    environment:
+      MONGODB_URL: mongodb://admin:admin2026@mongodb:27017/nhodp_datasets?authSource=admin
+    ports:
+      - "8002:8002"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+  ocr_service:
+    build:
+      context: ./services/ocr_service
+      dockerfile: Dockerfile
+    container_name: nhodp_ocr_service
+    environment:
+      MONGODB_URL: mongodb://admin:admin2026@mongodb:27017/nhodp_datasets?authSource=admin
+      DATASET_SERVICE_URL: http://dataset_service:8002
+    ports:
+      - "8003:8003"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+  content_service:
+    build:
+      context: ./services/content_service
+      dockerfile: Dockerfile
+    container_name: nhodp_content_service
+    environment:
+      DATABASE_URL: postgresql://nhodp:nhodp2026@postgres:5432/nhodp
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+  analytics_service:
+    build:
+      context: ./services/analytics_service
+      dockerfile: Dockerfile
+    container_name: nhodp_analytics_service
+    environment:
+      MONGODB_URL: mongodb://admin:admin2026@mongodb:27017/nhodp_datasets?authSource=admin
+      AUTH_SERVICE_URL: http://auth_service:8001
+      DATASET_SERVICE_URL: http://dataset_service:8002
+      OCR_SERVICE_URL: http://ocr_service:8003
+      CONTENT_SERVICE_URL: http://content_service:8004
+    ports:
+      - "8005:8005"
+    depends_on:
+      - auth_service
+      - dataset_service
+      - ocr_service
+      - content_service
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: nhodp_nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth_service
+      - dataset_service
+      - ocr_service
+      - content_service
+      - analytics_service
+    networks:
+      - nhodp_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+
+networks:
+  nhodp_network:
+    driver: bridge
